@@ -31,8 +31,8 @@ Every upstream merge must keep these working. If upstream changes make one impos
 The fork tracks upstream **stable releases**, not `main`. The first fork build sits on upstream `main` at 2dc5ebd because Tariq's database already had migrations newer than `v0.1.9`; never base a build on a commit older than the migrations his live data has.
 
 1. `.github/workflows/fork-upstream-check.yml` runs every 3 hours on GitHub (upstream sends no webhooks, so this step is a scheduled check). When upstream's latest stable release is not in `main`, it POSTs `{event, tag, sha, url}` signed with HMAC-SHA256 (`x-hub-signature-256`) to the T3 webhook task. Repo secrets: `T3_UPSTREAM_WEBHOOK_URL`, `T3_UPSTREAM_WEBHOOK_SECRET`.
-2. The T3 scheduled task "Merge upstream T3 Code stable release" (On webhook, deduplicated per tag) starts an agent thread in this project. It merges the tag, keeps the customizations above, fixes ordinary conflicts and build failures, and asks Tariq before committing when upstream overlaps a customization.
-3. After the merge is resolved, the agent commits, tags `v<upstream version>-tariq.<n>`, and pushes `main` and the tag. Tariq approved this push for upstream merges.
+2. The T3 scheduled task "Merge upstream T3 Code stable release" (On webhook, deduplicated per tag) starts an agent thread in its own worktree of this project. It merges the tag, keeps the customizations above, fixes ordinary conflicts and build failures, and asks Tariq before committing when upstream overlaps a customization.
+3. After the merge is resolved, the agent commits, tags `v<upstream version>-tariq.<n>`, and pushes `HEAD:main` and the tag. Tariq approved this push for upstream merges.
 4. `.github/workflows/fork-release.yml` builds the unsigned Windows installer on that tag and publishes it as the latest GitHub release with `latest.yml`.
 5. The installed app checks `Tariq-Sekhri/t3code` releases (`T3CODE_DESKTOP_UPDATE_REPOSITORY`, baked in at build time) and offers Download update → Install.
 
