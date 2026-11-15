@@ -83,6 +83,9 @@ function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
   });
 }
 
+/** Windows login launches pass this so the app starts in the tray. */
+export const START_HIDDEN_ARG = "--t3-start-hidden";
+
 const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linux
 const TITLEBAR_LIGHT_SYMBOL_COLOR = "#1f2937";
 const TITLEBAR_DARK_SYMBOL_COLOR = "#f8fafc";
@@ -396,6 +399,7 @@ export const make = Effect.gen(function* () {
   const backendReadyRef = yield* Ref.make(false);
   let backendHasStarted = false;
   let mainClosedDuringStartup = false;
+  let startHidden = environment.platform === "win32" && process.argv.includes(START_HIDDEN_ARG);
   const splashWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
   const context = yield* Effect.context<DesktopWindowRuntimeServices>();
   const runFork = Effect.runForkWith(context);
@@ -403,7 +407,10 @@ export const make = Effect.gen(function* () {
   const mainWindowMutex = yield* Semaphore.make(1);
   const pendingMainReveals = new WeakMap<Electron.BrowserWindow, Effect.Effect<void>>();
   const revealMain = Effect.fn("desktop.window.revealMain")((window: Electron.BrowserWindow) =>
-    Effect.suspend(() => pendingMainReveals.get(window) ?? electronWindow.reveal(window)),
+    Effect.suspend(() => {
+      startHidden = false;
+      return pendingMainReveals.get(window) ?? electronWindow.reveal(window);
+    }),
   );
   let flushMainWindowBounds: Effect.Effect<void> = Effect.void;
 
@@ -999,6 +1006,11 @@ export const make = Effect.gen(function* () {
     pendingMainReveals.set(window, revealWhenReady);
     bindFirstRevealTrigger(revealSubscribers, () => {
       rendererReady = true;
+      if (startHidden) {
+        startHidden = false;
+        void runPromise(dismissConnectingSplash);
+        return;
+      }
       void runPromise(revealWhenReady);
     });
 
@@ -1061,7 +1073,7 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.withSpan("desktop.window.createMainIfBackendReady"));
 
   const showConnectingSplash = Effect.gen(function* () {
-    if (yield* Ref.get(desktopState.quitting)) return;
+    if (startHidden || (yield* Ref.get(desktopState.quitting))) return;
     const existingSplash = yield* Ref.get(splashWindowRef);
     if (Option.isSome(existingSplash)) return;
     const existingWindow = yield* electronWindow.currentMainOrFirst;
