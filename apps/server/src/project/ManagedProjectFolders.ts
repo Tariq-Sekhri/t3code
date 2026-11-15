@@ -6,6 +6,7 @@ import {
   type ThreadId,
   VcsProcessSpawnError,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { foldLatinDiacritics, newProjectFolderName } from "@t3tools/shared/path";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -69,6 +70,18 @@ export class ScratchProjectError extends Schema.TaggedError<ScratchProjectError>
 /** Where No project threads keep their folders, whether or not this T3 home allows them. */
 export const scratchFolderRoot = (baseDir: string, path: Path.Path) =>
   path.resolve(baseDir, "scratch");
+
+/** Fork: on Windows, the default T3 home starts new projects in `~/Desktop/coding`. */
+export const namedProjectsRootFor = (input: {
+  readonly baseDir: string;
+  readonly homeDirectory: string;
+  readonly platform: NodeJS.Platform;
+  readonly path: Path.Path;
+}) =>
+  input.platform === "win32" &&
+  input.path.resolve(input.baseDir) === input.path.join(input.homeDirectory, ".t3")
+    ? input.path.join(input.homeDirectory, "Desktop", "coding")
+    : input.path.resolve(input.baseDir, "projects");
 
 export type ScratchError = ScratchUnavailableError | ScratchFolderError | ScratchProjectError;
 
@@ -390,7 +403,12 @@ const make = Effect.gen(function* () {
     );
   });
 
-  const namedProjectsRoot = path.resolve(config.baseDir, "projects");
+  const namedProjectsRoot = namedProjectsRootFor({
+    baseDir: config.baseDir,
+    homeDirectory: yield* HostProcess.HomeDirectory,
+    platform: yield* HostProcess.Platform,
+    path,
+  });
 
   const claimNamedFolder = Effect.fn("ManagedProjectFolders.claimNamedFolder")(function* (
     name: string,

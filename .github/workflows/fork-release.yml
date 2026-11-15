@@ -1,0 +1,76 @@
+# Fork only: builds the unsigned Windows installer for a `v<version>-tariq.<n>` tag and publishes
+# it as the latest GitHub release, which is the desktop app's update feed (latest.yml).
+name: Fork Release
+
+on:
+  push:
+    tags:
+      - "v*-tariq.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x64
+    if: github.repository == 'Tariq-Sekhri/t3code'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+-tariq\.[0-9]+)$ ]] || { echo "Unexpected tag $RELEASE_TAG" >&2; exit 1; }
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1.15.0
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Install
+        run: vp install
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter "@t3tools/desktop" ensure:electron
+
+      # .env.example carries the public T3 Connect identifiers that official builds bake in.
+      - name: Use public release configuration
+        shell: bash
+        run: cp .env.example .env
+
+      - name: Build installer
+        shell: bash
+        run: node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --build-version "${{ steps.version.outputs.version }}" --output-dir release
+
+      - name: Publish release
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release/*.exe release/*.blockmap release/latest.yml)
+          [[ -f release/latest.yml ]] || { echo "latest.yml missing; the update feed was not configured" >&2; exit 1; }
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --title "T3 Code ${{ steps.version.outputs.version }}" \
+            --notes "Fork build of $(git rev-parse --short HEAD). Install from Settings → Download update, or run the installer." \
+            --latest

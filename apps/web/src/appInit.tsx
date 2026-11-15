@@ -172,7 +172,6 @@ function startDocumentTitle(router: AppRouter): void {
           threadStatus: thread === null ? null : resolveWindowTitleThreadStatus(thread),
         },
       }),
-      desktop: isElectron,
     });
     // Projects change whenever any project does; most changes leave the title alone.
     if (document.title !== title) document.title = title;

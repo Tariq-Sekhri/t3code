@@ -1014,27 +1014,42 @@ function followsCurrentConversation(
 }
 
 function queuedRunModelSelection(
-  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "messages">,
+  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "messages" | "runs">,
   run: OrchestrationV2Run,
 ): ModelSelection {
   const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
-  return followsCurrentConversation(message)
+  return followsCurrentConversation(message) || providerSwitchedSinceQueued(projection, run)
     ? projection.thread.modelSelection
     : run.modelSelection;
+}
+
+/** Fork: the user sent a run on another provider after this one queued, so the queue follows it. */
+function providerSwitchedSinceQueued(
+  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs">,
+  run: OrchestrationV2Run,
+): boolean {
+  const latest = latestExecutedRun(projection.runs);
+  return (
+    latest !== null &&
+    DateTime.isGreaterThan(latest.requestedAt, run.requestedAt) &&
+    latest.providerInstanceId !== run.providerInstanceId &&
+    projection.thread.providerInstanceId === latest.providerInstanceId
+  );
 }
 
 /** The selection the thread will be on once every queued run has started. */
 function queueTailModelSelection(
   projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "messages">,
 ): ModelSelection {
-  return (
-    queuedRunsInDeliveryOrder(projection).findLast(
-      (run) =>
-        !followsCurrentConversation(
-          projection.messages.find((message) => message.id === run.userMessageId),
-        ),
-    )?.modelSelection ?? projection.thread.modelSelection
+  const tail = queuedRunsInDeliveryOrder(projection).findLast(
+    (run) =>
+      !followsCurrentConversation(
+        projection.messages.find((message) => message.id === run.userMessageId),
+      ),
   );
+  return tail === undefined
+    ? projection.thread.modelSelection
+    : queuedRunModelSelection(projection, tail);
 }
 
 /**

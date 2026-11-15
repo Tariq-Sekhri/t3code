@@ -39,6 +39,7 @@ import * as DesktopRemoteUpdates from "../updates/DesktopRemoteUpdates.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
+import * as DesktopTray from "../window/DesktopTray.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
@@ -402,6 +403,7 @@ const startup = Effect.gen(function* () {
   );
   yield* previewPasskeys.configure;
   yield* applicationMenu.configure;
+  if (environment.platform === "win32") yield* DesktopTray.register;
   // Portal identity is prepared pre-ready; MIME helpers must not gate the backend or window.
   yield* linuxUrlHandler.register.pipe(Effect.forkScoped);
   yield* bootstrap(backendStarted).pipe(

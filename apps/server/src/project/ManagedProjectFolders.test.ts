@@ -424,6 +424,21 @@ const TEST_IDENTITY = {
 const gitOutput = (cwd: string, args: ReadonlyArray<string>) =>
   git(cwd, args).pipe(Effect.map((result) => result.stdout.trim()));
 
+it.effect("starts named projects in Desktop/coding only for the default Windows T3 home", () =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const home = path.resolve("home-user");
+    const rootFor = (baseDir: string, platform: NodeJS.Platform) =>
+      ManagedProjectFolders.namedProjectsRootFor({ baseDir, homeDirectory: home, platform, path });
+    assert.equal(rootFor(path.join(home, ".t3"), "win32"), path.join(home, "Desktop", "coding"));
+    assert.equal(rootFor(path.join(home, ".t3"), "linux"), path.join(home, ".t3", "projects"));
+    assert.equal(
+      rootFor(path.join(home, "dev-t3"), "win32"),
+      path.join(home, "dev-t3", "projects"),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect("starts a named project as a committed repository, and suffixes a taken name", () =>
   withScratch(({ baseDir }) =>
     withGitEnv(

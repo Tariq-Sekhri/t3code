@@ -826,7 +826,19 @@ export const make = Effect.gen(function* () {
     window.on("move", scheduleBoundsPersist);
     window.on("maximize", scheduleBoundsPersist);
     window.on("unmaximize", scheduleBoundsPersist);
-    window.on("close", () => {
+    // Hiding on close would block Windows sign-out and shutdown.
+    window.on("session-end", () => {
+      Effect.runSyncWith(context)(Ref.set(desktopState.quitting, true));
+    });
+    window.on("close", (event) => {
+      // Windows keeps running in the tray; the tray menu's Quit is the way out.
+      if (
+        environment.platform === "win32" &&
+        !Effect.runSyncWith(context)(Ref.get(desktopState.quitting))
+      ) {
+        event.preventDefault();
+        window.hide();
+      }
       runFork(flushBoundsPersist);
     });
 

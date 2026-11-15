@@ -1,0 +1,49 @@
+# Fork only: upstream sends no webhooks, so this checks upstream's latest stable release on a
+# schedule and, when main does not contain it yet, posts a signed request to the T3 webhook task
+# that merges it.
+name: Fork Upstream Check
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Post even when main already contains the release (delivery test)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check upstream stable release
+    if: github.repository == 'Tariq-Sekhri/t3code'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WEBHOOK_URL: ${{ secrets.T3_UPSTREAM_WEBHOOK_URL }}
+      WEBHOOK_SECRET: ${{ secrets.T3_UPSTREAM_WEBHOOK_SECRET }}
+      FORCE: ${{ inputs.force || false }}
+    steps:
+      - name: Notify T3 when a stable release is unmerged
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(gh release view -R pingdotgg/t3code --json tagName -q .tagName)
+          sha=$(gh api "repos/pingdotgg/t3code/commits/$tag" -q .sha)
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...main" -q .status)
+          echo "Upstream stable $tag ($sha); main is $status of it."
+          if [[ "$status" == "ahead" || "$status" == "identical" ]] && [[ "$FORCE" != "true" ]]; then
+            exit 0
+          fi
+          [[ -n "$WEBHOOK_URL" && -n "$WEBHOOK_SECRET" ]] || { echo "Webhook secrets are not set" >&2; exit 1; }
+          body=$(jq -nc --arg tag "$tag" --arg sha "$sha" --arg status "$status" \
+            '{event: "upstream_release", tag: $tag, sha: $sha, status: $status, url: ("https://github.com/pingdotgg/t3code/releases/tag/" + $tag)}')
+          signature=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | sed 's/^.* //')
+          curl -fsS --retry 3 -X POST "$WEBHOOK_URL" \
+            -H "content-type: application/json" \
+            -H "x-hub-signature-256: sha256=$signature" \
+            --data "$body" -o /dev/null -w "T3 webhook responded %{http_code}\n"
