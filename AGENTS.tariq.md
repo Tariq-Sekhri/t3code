@@ -27,6 +27,7 @@ Every upstream merge must keep these working. If upstream changes make one impos
 4. **Queued messages follow a provider switch**: when the user sends a message on another provider after messages were queued (for example GPT hit its usage limit and he switched to Claude), the remaining queue runs on the new provider instead of switching back or waiting for the old provider's reset. Upstream deliberately holds the limited provider's queue; this fork does not.
    - Code: `providerSwitchedSinceQueued` in `apps/server/src/orchestration-v2/Orchestrator.ts`, tested by "moves a limited provider's queue to the provider the user switched to" in `runtimeLayer.test.ts`.
 5. **Windows packaging budget**: `WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT` in `scripts/build-desktop-artifact.ts` is raised (104) for the prepared server bytecode cache. Re-derive the number from the real payload count if upstream changes packaging; do not just revert it.
+6. **Notifications expire normally**: completion alerts must not require interaction or linger over games. Returning to the app clears desktop notifications; opening a thread also clears its alerts.
 
 ## Upstream maintenance
 

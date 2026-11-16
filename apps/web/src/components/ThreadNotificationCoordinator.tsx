@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
-import { isWindowsPlatform } from "../lib/utils";
 import { environmentSummaries } from "../state/presentation";
 import { environmentShell } from "../state/shell";
 import { environmentThreadShells } from "../state/threads";
@@ -99,11 +98,18 @@ export function startThreadNotifications(
       environmentId?: EnvironmentId;
       threadId?: ThreadId;
     };
-  const closeOpenedThreadToasts = () => {
+  const closeOpenedThreadNotifications = () => {
     const { environmentId, threadId } = activeThread();
     if (environmentId === undefined || threadId === undefined) return;
     const opened = threadKey({ environmentId, threadId });
     closeToasts((key) => key === opened);
+    const count = pending.size;
+    for (const [tag, entry] of pending) {
+      if (threadKey(entry) !== opened) continue;
+      entry.notification.close();
+      pending.delete(tag);
+    }
+    if (count !== pending.size) setNotificationBadge(pending.size);
   };
   // A notification shown before the tag filter turned on must not stay on screen. While hiding,
   // one whose thread left the live list (archived) cannot be judged, so it closes too.
@@ -126,6 +132,9 @@ export function startThreadNotifications(
     for (const { notification } of pending.values()) notification.close();
     pending.clear();
     setNotificationBadge(0);
+  };
+  const clearVisiblePending = () => {
+    if (document.visibilityState === "visible" && document.hasFocus()) clearPending();
   };
 
   const present = (
@@ -212,8 +221,7 @@ export function startThreadNotifications(
         body: thread.title,
         tag: threadNotificationTag(environmentId, thread.id),
         silent: true,
-        // Windows drops clicks after a toast moves into Notification Center.
-        requireInteraction: kind === "completion" && isWindowsPlatform(navigator.platform),
+        requireInteraction: false,
       });
       trackNotification(environmentId, thread.id, notification);
       notification.addEventListener("click", () => {
@@ -399,9 +407,11 @@ export function startThreadNotifications(
     if (hasDesktopNotifications(nextMode)) {
       const unsubscribeBadgeClear = window.desktopBridge?.onNotificationBadgeClear(clearPending);
       window.addEventListener("focus", clearPending);
+      document.addEventListener("visibilitychange", clearVisiblePending);
       stops.push(() => {
         unsubscribeBadgeClear?.();
         window.removeEventListener("focus", clearPending);
+        document.removeEventListener("visibilitychange", clearVisiblePending);
         clearPending();
       });
     }
@@ -435,7 +445,7 @@ export function startThreadNotifications(
     registry.subscribe(environmentThreadShells.anyEnvironmentHidingAtom, closeHiddenPending),
     registry.subscribe(environmentThreadShells.threadRefsAtom, closeHiddenPending),
   ];
-  const unsubscribeRoute = router.subscribe("onResolved", closeOpenedThreadToasts);
+  const unsubscribeRoute = router.subscribe("onResolved", closeOpenedThreadNotifications);
   onSettings();
 
   return () => {

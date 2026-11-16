@@ -291,6 +291,25 @@ it("presents completion notifications and sound as soon as the shell completes",
   );
   expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Thread completed"]);
   expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
+  expect(TestNotification.sent[0]!.options.requireInteraction).toBe(false);
+});
+
+it("clears desktop notifications when their thread opens or the app becomes visible", async () => {
+  await using app = setup();
+  app.start();
+  state.shells.set("one", shell({ hasPendingApprovals: true }));
+  state.shells.set("two", shell({ hasPendingUserInput: true }));
+  const [opened, other] = TestNotification.sent;
+
+  app.openThread("one", "thread");
+  expect(opened!.close).toHaveBeenCalledOnce();
+  expect(other!.close).not.toHaveBeenCalled();
+  expect(state.badge).toHaveBeenLastCalledWith(1);
+
+  focused = true;
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(other!.close).toHaveBeenCalledOnce();
+  expect(state.badge).toHaveBeenLastCalledWith(0);
 });
 
 it.each([false, true])(
