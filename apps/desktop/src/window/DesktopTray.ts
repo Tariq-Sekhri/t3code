@@ -1,9 +1,11 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as Electron from "electron";
 
+import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
@@ -42,6 +44,7 @@ const promoteTrayIcon = Effect.scoped(
 /** Windows tray icon: click opens the window, the menu offers the real Quit. Needs app ready. */
 export const register = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const assets = yield* DesktopAssets.DesktopAssets;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const electronApp = yield* ElectronApp.ElectronApp;
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
@@ -55,9 +58,10 @@ export const register = Effect.gen(function* () {
   const quit = () => {
     runFork(electronApp.quit);
   };
-  const icon = yield* Effect.promise(() =>
-    Electron.app.getFileIcon(process.execPath, { size: "small" }),
-  );
+  const iconPaths = yield* assets.iconPaths;
+  const icon = Option.isSome(iconPaths.ico)
+    ? iconPaths.ico.value
+    : yield* Effect.promise(() => Electron.app.getFileIcon(process.execPath, { size: "small" }));
   yield* Effect.acquireRelease(
     Effect.sync(() => {
       const tray = new Electron.Tray(icon);

@@ -19,6 +19,7 @@ Every upstream merge must keep these working. If upstream changes make one impos
    - Code: `resolveWindowTitle` in `apps/web/src/branding.logic.ts`, tested in `apps/web/src/branding.logic.test.ts`.
 2. **Close to tray**, like a time tracker: the window's X hides the window and everything keeps running. A tray icon reopens it on click; its right-click menu has Open and Quit, and Quit is the real exit.
    - Code: close handler in `apps/desktop/src/window/DesktopWindow.ts`, tray in `apps/desktop/src/window/DesktopTray.ts`, registered after app ready in `apps/desktop/src/app/DesktopApp.ts`.
+   - Load the tray icon from the bundled Windows ICO, matching the window; Windows executable file-icon lookup can return a generic icon.
    - Every real quit path (tray Quit, Ctrl+Q, updater, relaunch, Windows sign-out/shutdown) must still exit; only a plain window close hides.
    - The tray icon is always shown on the taskbar, not in the overflow: the packaged app sets `IsPromoted=1` on its own `HKCU\Control Panel\NotifyIconSettings` entry each launch.
    - The packaged app starts with Windows, hidden in the tray: it registers itself as a login item with `--t3-start-hidden` (`START_HIDDEN_ARG` in `DesktopWindow.ts`), and that launch creates the window without showing it or the splash. Opening it from the tray, the shortcut, or a deep link shows it normally.
