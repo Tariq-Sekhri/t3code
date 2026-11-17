@@ -28,6 +28,8 @@ Every upstream merge must keep these working. If upstream changes make one impos
    - Code: `providerSwitchedSinceQueued` in `apps/server/src/orchestration-v2/Orchestrator.ts`, tested by "moves a limited provider's queue to the provider the user switched to" in `runtimeLayer.test.ts`.
 5. **Windows packaging budget**: `WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT` in `scripts/build-desktop-artifact.ts` is raised (104) for the prepared server bytecode cache. Re-derive the number from the real payload count if upstream changes packaging; do not just revert it.
 6. **Notifications expire normally**: completion alerts must not require interaction or linger over games. Returning to the app clears desktop notifications; opening a thread also clears its alerts.
+7. **Agents see message send times**: every message sent to an agent (new turn or steer) starts with `[Sent YYYY-MM-DD Day HH:MM GMT±N]` in local time, so "since we last talked" questions work. Slash commands are left verbatim. Off by default via `T3CODE_MESSAGE_TIMESTAMPS` so upstream tests keep exact text; the desktop backend env turns it on.
+   - Code: `apps/server/src/orchestration-v2/MessageSentAt.ts` (tested beside it), used in `ProviderTurnStartService.ts` and `ProviderTurnControlService.ts`; flag set in `apps/desktop/src/backend/DesktopBackendConfiguration.ts`.
 
 ## Upstream maintenance
 
