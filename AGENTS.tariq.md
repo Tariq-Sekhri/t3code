@@ -34,11 +34,11 @@ Every upstream merge must keep these working. If upstream changes make one impos
 
 ## Upstream maintenance
 
-The fork tracks upstream **stable releases**, not `main`. The first fork build sits on upstream `main` at 2dc5ebd because Tariq's database already had migrations newer than `v0.1.9`; never base a build on a commit older than the migrations his live data has.
+The fork tracks upstream **nightly releases** (`v<version>-nightly.<YYYYMMDD>.<run>`), not stable releases or raw `main`. Never base a build on a commit older than the migrations Tariq's live data has.
 
-1. `.github/workflows/fork-upstream-check.yml` runs every 3 hours on GitHub (upstream sends no webhooks, so this step is a scheduled check). When upstream's latest stable release is not in `main`, it POSTs `{event, tag, sha, url}` signed with HMAC-SHA256 (`x-hub-signature-256`) to the T3 webhook task. Repo secrets: `T3_UPSTREAM_WEBHOOK_URL`, `T3_UPSTREAM_WEBHOOK_SECRET`.
-2. The T3 scheduled task "Merge upstream T3 Code stable release" (On webhook, deduplicated per tag) starts an agent thread in its own worktree of this project. It merges the tag, keeps the customizations above, fixes ordinary conflicts and build failures, and asks Tariq before committing when upstream overlaps a customization.
-3. After the merge is resolved, the agent commits, tags `v<upstream version>-tariq.<n>`, and pushes `HEAD:main` and the tag. Tariq approved this push for upstream merges.
+1. `.github/workflows/fork-upstream-check.yml` runs every 3 hours on GitHub (upstream sends no webhooks, so this step is a scheduled check). It reads upstream's latest nightly from `update-feed/nightly.json` (falling back to the GitHub releases API) and, when it is not in `main`, POSTs `{event, tag, sha, url}` signed with HMAC-SHA256 (`x-hub-signature-256`) to the T3 webhook task. Repo secrets: `T3_UPSTREAM_WEBHOOK_URL`, `T3_UPSTREAM_WEBHOOK_SECRET`.
+2. The T3 scheduled task "Merge upstream T3 Code nightly release" (On webhook, deduplicated per tag) starts an agent thread in its own worktree of this project. It merges the tag, keeps the customizations above, fixes ordinary conflicts and build failures, and asks Tariq before committing when upstream overlaps a customization.
+3. After the merge is resolved, the agent commits, tags `<upstream tag>.tariq.<n>` (i.e. `v<version>-nightly.<YYYYMMDD>.<run>.tariq.<n>`), and pushes `HEAD:main` and the tag. Tariq approved this push for upstream merges. Using a dot before `tariq` keeps `<run>` a numeric semver identifier and keeps the build on the fork's single `latest.yml` update feed.
 4. `.github/workflows/fork-release.yml` builds the unsigned Windows installer on that tag and publishes it as the latest GitHub release with `latest.yml`.
 5. The installed app checks `Tariq-Sekhri/t3code` releases (`T3CODE_DESKTOP_UPDATE_REPOSITORY`, baked in at build time) and offers Download update → Install.
 
@@ -48,5 +48,5 @@ Upstream's own workflows are disabled in the fork's Actions settings; only the `
 
 - Commits, pushes, releases, and installing over the running app each need Tariq's approval, except the upstream-merge push above. An edit request does not authorize them.
 - The installed app lives in `%LOCALAPPDATA%\Programs\t3code` and hosts the agents working here. Do not close it, replace it, or touch `~/.t3/userdata` without approval.
-- Releases are `v<version>-tariq.<n>` tags; a fork-only change bumps `<n>` on the same upstream version. Builds are unsigned and skip the WSL runtime (Tariq does not use the WSL backend).
+- Releases are `v<version>-nightly.<YYYYMMDD>.<run>.tariq.<n>` tags (legacy `v<version>-tariq.<n>` is also accepted); a fork-only change bumps `<n>` on the same upstream nightly. Builds are unsigned and skip the WSL runtime (Tariq does not use the WSL backend).
 - Record new customizations and decided preferences in this file.

@@ -1,4 +1,4 @@
-# Fork only: upstream sends no webhooks, so this checks upstream's latest stable release on a
+# Fork only: upstream sends no webhooks, so this checks upstream's latest nightly release on a
 # schedule and, when main does not contain it yet, posts a signed request to the T3 webhook task
 # that merges it.
 name: Fork Upstream Check
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   check:
-    name: Check upstream stable release
+    name: Check upstream nightly release
     if: github.repository == 'Tariq-Sekhri/t3code'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -28,14 +28,20 @@ jobs:
       WEBHOOK_SECRET: ${{ secrets.T3_UPSTREAM_WEBHOOK_SECRET }}
       FORCE: ${{ inputs.force || false }}
     steps:
-      - name: Notify T3 when a stable release is unmerged
+      - name: Notify T3 when a nightly release is unmerged
         shell: bash
         run: |
           set -euo pipefail
-          tag=$(gh release view -R pingdotgg/t3code --json tagName -q .tagName)
+          nightly_re='^v[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[0-9]+$'
+          tag=$(gh release download update-feed -R pingdotgg/t3code -p nightly.json -O - 2>/dev/null | jq -r '.tag_name // empty' || true)
+          if [[ ! "$tag" =~ $nightly_re ]]; then
+            tag=$(gh api "repos/pingdotgg/t3code/releases?per_page=30" \
+              -q '[.[] | select(.draft == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[0-9]+$")))][0].tag_name // empty')
+          fi
+          [[ "$tag" =~ $nightly_re ]] || { echo "No upstream nightly release found" >&2; exit 1; }
           sha=$(gh api "repos/pingdotgg/t3code/commits/$tag" -q .sha)
           status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...main" -q .status)
-          echo "Upstream stable $tag ($sha); main is $status of it."
+          echo "Upstream nightly $tag ($sha); main is $status of it."
           if [[ "$status" == "ahead" || "$status" == "identical" ]] && [[ "$FORCE" != "true" ]]; then
             exit 0
           fi

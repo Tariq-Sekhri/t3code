@@ -1,11 +1,13 @@
-# Fork only: builds the unsigned Windows installer for a `v<version>-tariq.<n>` tag and publishes
-# it as the latest GitHub release, which is the desktop app's update feed (latest.yml).
+# Fork only: builds the unsigned Windows installer for a `v<version>-nightly.<date>.<run>.tariq.<n>`
+# (or legacy `v<version>-tariq.<n>`) tag and publishes it as the latest GitHub release, which is
+# the desktop app's update feed (latest.yml).
 name: Fork Release
 
 on:
   push:
     tags:
       - "v*-tariq.*"
+      - "v*-nightly.*.tariq.*"
 
 permissions:
   contents: write
@@ -38,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+-tariq\.[0-9]+)$ ]] || { echo "Unexpected tag $RELEASE_TAG" >&2; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-nightly\.[0-9]{8}\.[0-9]+\.tariq\.[0-9]+|-tariq\.[0-9]+))$ ]] || { echo "Unexpected tag $RELEASE_TAG" >&2; exit 1; }
           echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Vite+
