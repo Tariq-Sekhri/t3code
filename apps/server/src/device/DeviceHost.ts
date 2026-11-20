@@ -147,6 +147,8 @@ export interface DeviceOperations {
 
 export interface DeviceHostReady {
   readonly nodePath: string;
+  /** Set when devices open as native desktop windows via adb/emulator, without a hub stream. */
+  readonly nativeWindow?: boolean;
   /**
    * Ends an agent-device session on the daemon that serves `deviceId`. Hosts
    * with a shared daemon provide it only while that daemon runs; hosts with a
@@ -195,7 +197,14 @@ export class DeviceHost extends Context.Service<
     readonly inspect?: Effect.Effect<DeviceHostSummary, DeviceHostError>;
     readonly platformAvailability: (
       platform: DevicePlatform,
+      options?: { readonly nativeWindow?: boolean },
     ) => Effect.Effect<DevicePlatformAvailability>;
+    /**
+     * Local hosts only: Android emulators driven straight through the SDK's adb and emulator,
+     * opened as native desktop windows. Needs no hub, Node, ffmpeg, avdmanager or agent-device.
+     */
+    readonly ensureNativeAndroidReady?: Effect.Effect<DeviceHostReady, DeviceHostError>;
+    readonly currentNativeAndroid?: Effect.Effect<DeviceHostReady | null>;
     readonly ensureReady: (
       onPhase: (phase: "installing" | "starting", detail?: string) => Effect.Effect<void>,
     ) => Effect.Effect<DeviceHostReady, DeviceHostError | NodeRuntimeUnavailableError>;

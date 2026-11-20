@@ -8,6 +8,9 @@ import { SettingsSecretValue } from "./settingsSecretValue.ts";
 export const DevicePlatform = Schema.Literals(["ios", "android"]);
 export type DevicePlatform = typeof DevicePlatform.Type;
 
+export const DeviceDisplayMode = Schema.Literals(["panel", "window"]);
+export type DeviceDisplayMode = typeof DeviceDisplayMode.Type;
+
 export const DeviceHostId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 export type DeviceHostId = typeof DeviceHostId.Type;
 
@@ -246,6 +249,7 @@ export const DeviceSession = Schema.Struct({
   hostId: DeviceHostId,
   deviceId: DeviceId,
   platform: DevicePlatform,
+  display: Schema.optional(DeviceDisplayMode),
   openedAt: Schema.String,
 });
 export type DeviceSession = typeof DeviceSession.Type;
@@ -278,6 +282,7 @@ const deviceServiceStateFields = {
   ),
   onboardingCompleted: Schema.Boolean,
   agentAccessEnabled: Schema.Boolean,
+  localAndroidNativeWindow: Schema.optional(Schema.Boolean),
   hubBasePath: Schema.String,
   revision: Schema.Int,
 };
@@ -337,6 +342,7 @@ export type DeviceListInput = typeof DeviceListInput.Type;
 export const DeviceConfigureInput = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),
   agentAccessEnabled: Schema.optional(Schema.Boolean),
+  localAndroidNativeWindow: Schema.optional(Schema.Boolean),
   onboardingCompleted: Schema.optional(Schema.Boolean),
 });
 export type DeviceConfigureInput = typeof DeviceConfigureInput.Type;
@@ -346,6 +352,7 @@ export const DeviceOpenInput = Schema.Struct({
   hostId: Schema.optional(DeviceHostId),
   deviceId: DeviceId,
   platform: DevicePlatform,
+  display: Schema.optional(DeviceDisplayMode),
   /** Boot the simulator or emulator when it is not running. Defaults to true. */
   boot: Schema.optional(Schema.Boolean),
 });
@@ -655,16 +662,26 @@ export const DeviceToolOpenInput = Schema.Struct({
   hostId: Schema.optional(
     DeviceHostId.annotate({ description: "Host from `device_list`. Default local." }),
   ),
+  display: Schema.optional(
+    DeviceDisplayMode.annotate({
+      description:
+        "Local Android display mode: 'window' for native window via adb, 'panel' to stream in T3.",
+    }),
+  ),
 });
 export type DeviceToolOpenInput = typeof DeviceToolOpenInput.Type;
 
 export const DeviceToolOpenResult = Schema.Struct({
   device: DeviceSummary,
-  agentDevice: Schema.Struct({
-    command: Schema.String,
-    targetArgs: Schema.Array(Schema.String),
-    session: Schema.String,
-  }),
+  display: Schema.optional(DeviceDisplayMode),
+  adbSerial: Schema.optional(Schema.String),
+  agentDevice: Schema.optional(
+    Schema.Struct({
+      command: Schema.String,
+      targetArgs: Schema.Array(Schema.String),
+      session: Schema.String,
+    }),
+  ),
   quickStart: Schema.String,
 });
 export type DeviceToolOpenResult = typeof DeviceToolOpenResult.Type;

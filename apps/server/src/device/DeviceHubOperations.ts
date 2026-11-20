@@ -11,6 +11,10 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import type { DeviceHostReady, DeviceOperations, HostDevice } from "./DeviceHost.ts";
+import {
+  listAdbDevices as listLocalAdbDevices,
+  listAndroidAvds,
+} from "./LocalAndroidOperations.ts";
 
 const BOOT_TIMEOUT = Duration.minutes(3);
 const SCREENSHOT_TIMEOUT = Duration.seconds(20);
@@ -22,7 +26,6 @@ const SIMULATOR_LIST_FAILED =
 // The hub passes numeric display IDs that Xcode 26 rejects; iOS 27 needs them for multiple displays.
 // expo-device-hub 0.22.1 returns no Android devices when avdmanager fails, before it runs adb.
 const AVDMANAGER_LIST_FAILED = "[android-utils] Failed to run `avdmanager list avd`";
-const GETPROP_LINE = /^\[([^\]]+)\]: \[(.*)\]$/;
 const runsOnXcode26Runtime = (version: string) => Number(/^iOS (\d+)/.exec(version)?.[1]) <= 26;
 const DEFAULT_DISPLAY_SCREENSHOT = `f=$(mktemp -t t3-screenshot) || exit 1
 trap 'rm -f "$f"' 0
@@ -125,49 +128,7 @@ export const makeDeviceHubOperations = (options: {
     );
 
   // Mirrors the hub's own adb discovery for when it skips it.
-  const listAdbDevices = Effect.gen(function* () {
-    const listed = yield* run("adb", ["devices", "-l"]);
-    if (listed.code !== 0) return undefined;
-    const serials = listed.stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim().split(/\s+/))
-      .flatMap(([serial, state]) => (serial && state === "device" ? [serial] : []));
-    return yield* Effect.forEach(serials, (serial) =>
-      Effect.gen(function* () {
-        const getprop = yield* run("adb", ["-s", serial, "shell", "getprop"]);
-        const props = new Map(
-          getprop.stdout.split(/\r?\n/).flatMap((line) => {
-            const match = GETPROP_LINE.exec(line.trim());
-            return match ? [[match[1]!, match[2]!] as const] : [];
-          }),
-        );
-        const emulator = props.get("ro.kernel.qemu") === "1" || props.get("ro.boot.qemu") === "1";
-        const avdName = emulator
-          ? (yield* run("adb", ["-s", serial, "emu", "avd", "name"])).stdout
-              .split(/\r?\n/)
-              .map((line) => line.trim())
-              .find((line) => line && line !== "OK" && !line.startsWith("KO"))
-          : undefined;
-        const model = props.get("ro.product.model");
-        const manufacturer = props.get("ro.product.manufacturer");
-        const release = props.get("ro.build.version.release");
-        return {
-          id: serial,
-          name: emulator
-            ? (avdName ?? serial)
-            : model
-              ? [manufacturer, model].filter(Boolean).join(" ")
-              : serial,
-          platform: "android",
-          version: release
-            ? `Android ${/^\d+$/.test(release) ? `${release}.0` : release}`
-            : "Android",
-          booted: true,
-          physical: !emulator,
-        } satisfies HostDevice;
-      }),
-    );
-  });
+  const listAdbDevices = listLocalAdbDevices(run);
 
   const list: DeviceOperations["list"] = Effect.gen(function* () {
     const listed = yield* fetchJson(
@@ -218,7 +179,7 @@ export const makeDeviceHubOperations = (options: {
           devices.push(...adbDevices);
         }
       }
-      const avds = yield* run("emulator", ["-list-avds"]);
+      const avds = yield* listAndroidAvds(run);
       // Discovered devices stay listed; the AVDs that could not be listed are a warning.
       if (avds.code !== 0) {
         androidDiscoveryIncomplete = true;
@@ -226,10 +187,7 @@ export const makeDeviceHubOperations = (options: {
           `Could not list Android virtual devices (emulator -list-avds, exit code ${avds.code}). Discovered devices remain available.`,
         );
       }
-      for (const name of (avds.code === 0 ? avds.stdout : "")
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)) {
+      for (const name of avds.avds) {
         if (!devices.some((device) => device.platform === "android" && device.name === name)) {
           devices.push({
             id: name,

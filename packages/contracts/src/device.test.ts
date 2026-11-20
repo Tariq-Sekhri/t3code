@@ -2,7 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
 import {
   DeviceBootError,
+  DeviceConfigureInput,
+  DeviceDisplayMode,
+  DeviceId,
   DeviceServiceState,
+  DeviceToolOpenInput,
+  DeviceToolOpenResult,
   EasDeviceHostConfig,
   SimlockDeviceHostConfig,
   EasDeviceHostConfigs,
@@ -14,6 +19,10 @@ const decodeSshHosts = Schema.decodeUnknownSync(SshDeviceHostConfigs);
 const decodeEas = Schema.decodeUnknownSync(EasDeviceHostConfigs);
 const encodeState = Schema.encodeSync(DeviceServiceState);
 const decodeState = Schema.decodeUnknownSync(DeviceServiceState);
+const decodeDisplayMode = Schema.decodeUnknownSync(DeviceDisplayMode);
+const decodeConfigureInput = Schema.decodeUnknownSync(DeviceConfigureInput);
+const decodeToolOpenInput = Schema.decodeUnknownSync(DeviceToolOpenInput);
+const decodeToolOpenResult = Schema.decodeUnknownSync(DeviceToolOpenResult);
 // The host summary as clients decoded it before Expo hosts existed.
 const decodeOlderState = Schema.decodeUnknownSync(
   Schema.Struct({
@@ -106,5 +115,35 @@ describe("device boot errors", () => {
     }).message;
     expect(message).toContain("PANIC: Missing emulator engine program");
     expect(message).not.toContain("Try again");
+  });
+});
+
+describe("native window local Android contracts", () => {
+  it("decodes display mode, configure flag, and agentless device_open results", () => {
+    expect(decodeDisplayMode("window")).toBe("window");
+    expect(decodeConfigureInput({ localAndroidNativeWindow: true })).toEqual({
+      localAndroidNativeWindow: true,
+    });
+    expect(decodeToolOpenInput({ platform: "android", display: "window" })).toEqual({
+      platform: "android",
+      display: "window",
+    });
+    const result = decodeToolOpenResult({
+      device: {
+        hostId: "local",
+        id: DeviceId.make("emulator-5554"),
+        platform: "android",
+        name: "Pixel_8_API_35",
+        version: "Android 15.0",
+        booted: true,
+        physical: false,
+      },
+      display: "window",
+      adbSerial: "emulator-5554",
+      quickStart: "adb -s emulator-5554 install app.apk",
+    });
+    expect(result.display).toBe("window");
+    expect(result.adbSerial).toBe("emulator-5554");
+    expect(result.agentDevice).toBeUndefined();
   });
 });

@@ -2,6 +2,7 @@ import { pruneLocalDeviceTools } from "./deviceToolMaintenance.ts";
 import { deviceToolInstallMessage } from "@t3tools/contracts";
 // The hub runs at origin root; T3 strips its prefix and the Device panel derives stream URLs from it.
 import {
+  DeviceBootError,
   type DeviceHostSummary,
   type DevicePlatform,
   type DevicePlatformAvailability,
@@ -39,6 +40,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import { releaseAgentDeviceSession } from "./AgentDeviceTarget.ts";
 import * as DeviceHost from "./DeviceHost.ts";
 import { makeDeviceHubOperations } from "./DeviceHubOperations.ts";
+import { makeLocalAndroidOperations } from "./LocalAndroidOperations.ts";
 import {
   agentDeviceStateDir,
   type DeviceToolPaths,
@@ -278,12 +280,21 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
   );
   const startLock = yield* Semaphore.make(1);
   const runningRef = yield* Ref.make<RunningHost | null>(null);
+  const nativeAndroidRef = yield* Ref.make<DeviceHost.DeviceHostReady | null>(null);
   const restartDelayRef = yield* Ref.make(0);
   const hostId = LOCAL_DEVICE_HOST_ID;
 
   const platformAvailability = Effect.fn("LocalDeviceHost.platformAvailability")(function* (
     platform: DevicePlatform,
+    options?: { readonly nativeWindow?: boolean },
   ): Effect.fn.Return<DevicePlatformAvailability> {
+    if (options?.nativeWindow && platform === "ios") {
+      return {
+        platform,
+        available: false,
+        reason: "Native-window mode is Android-only on the local host.",
+      };
+    }
     const reason = yield* platformReason(platform).pipe(
       Effect.provideService(FileSystem.FileSystem, fs),
       Effect.provideService(Path.Path, path),
@@ -863,6 +874,91 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
       : {}),
   });
 
+  const spawnNativeEmulator = Effect.fn("LocalDeviceHost.spawnNativeEmulator")(function* (
+    avdName: string,
+  ) {
+    const sdk = yield* currentSdk;
+    if (!sdk.root || !sdk.emulator) {
+      return yield* new DeviceBootError({
+        hostId,
+        deviceId: avdName,
+        reason: "launch_failed",
+        diagnostics: "Android emulator is not available on this host.",
+        cause: null,
+      });
+    }
+    const emulatorPath = path.join(
+      sdk.root,
+      "emulator",
+      hostPlatform === "win32" ? "emulator.exe" : "emulator",
+    );
+    const child = yield* spawner
+      .spawn(
+        ChildProcess.make(emulatorPath, ["-avd", avdName], {
+          cwd: workingDirectory,
+          detached: true,
+          shell: false,
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore",
+          env: deviceHostEnvironment(environment, sdk.root, hostPlatform, path),
+        }),
+      )
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new DeviceBootError({
+              hostId,
+              deviceId: avdName,
+              reason: "launch_failed",
+              diagnostics: `Failed to start ${emulatorPath} -avd ${avdName}.`,
+              cause,
+            }),
+        ),
+      );
+    yield* child.unref;
+  });
+
+  const ensureNativeAndroidReady: DeviceHost.DeviceHost["Service"]["ensureNativeAndroidReady"] =
+    Effect.gen(function* () {
+      const existing = yield* Ref.get(nativeAndroidRef);
+      if (existing) return existing;
+      const availability = yield* platformAvailability("android", { nativeWindow: true });
+      if (!availability.available) {
+        return yield* new DeviceHost.DeviceHostError({
+          hostId,
+          step: "preparing native-window Android",
+          cause: availability.reason ?? "Android SDK is not available.",
+        });
+      }
+      const nodePath = yield* resolveNodeExecutable(
+        "Local native-window Android",
+        yield* currentHostEnvironment,
+      ).pipe(
+        Effect.provideService(FileSystem.FileSystem, fs),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(HostProcess.Platform, hostPlatform),
+        Effect.orElseSucceed(() => process.execPath),
+      );
+      const ready: DeviceHost.DeviceHostReady = {
+        hub: { origin: "native-android://local" },
+        devices: makeLocalAndroidOperations({
+          hostId,
+          run,
+          spawnEmulator: spawnNativeEmulator,
+        }),
+        nodePath,
+        run,
+        helpers: { serveSimAxSettings: null, serveSimCli: null },
+        nativeWindow: true,
+      };
+      yield* Ref.set(nativeAndroidRef, ready);
+      return ready;
+    }).pipe(Effect.withSpan("LocalDeviceHost.ensureNativeAndroidReady"));
+
+  const currentNativeAndroid: DeviceHost.DeviceHost["Service"]["currentNativeAndroid"] =
+    Ref.get(nativeAndroidRef);
+
   const current: DeviceHost.DeviceHost["Service"]["current"] = Ref.get(runningRef).pipe(
     Effect.map((running) => (running ? toReady(running) : null)),
   );
@@ -899,6 +995,8 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     label: LOCAL_DEVICE_HOST_LABEL,
     summary,
     platformAvailability,
+    ensureNativeAndroidReady,
+    currentNativeAndroid,
     ensureReady,
     ensureAgentReady,
     current,
