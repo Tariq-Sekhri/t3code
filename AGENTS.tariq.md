@@ -34,6 +34,9 @@ Every upstream merge must keep these working. If upstream changes make one impos
 8. **Sidebar footer omits Pull requests and Issues**: the bottom-left utility bar only shows Settings and Usage (not the PR or Issues buttons).
    - Code: `SidebarUtilityMenu` in `apps/web/src/components/sidebar/SidebarChrome.tsx` (and `usePullRequestsSupported` removed from `apps/web/src/state/environments.ts` for knip; restore it if upstream adds another caller). Routes/pages and i18n catalogs stay intact so upstream merges stay clean.
 
+9. **OpenCode free models**: a model with a zero base input and output price is tagged "Free" in the model picker and listed first. Before every turn on a model that was ever seen free (or whose id ends `-free`), the OpenCode adapter re-reads the live catalog and fails the turn instead of sending when the model is no longer free or cannot be confirmed.
+   - Code: `isFreeOpenCodeCost` and `freeFirst` in `packages/provider-opencode/src/server/status.ts`, `notFreeReason` in `packages/provider-opencode/src/server/v2/adapter.ts` (OpenCode 2 adapter only), `isFree` in `ServerProviderModel`, badge in `ModelListRow.tsx`; tested in `openCode2Catalog.test.ts`.
+
 ## Upstream maintenance
 
 The fork tracks upstream **nightly releases** (`v<version>-nightly.<YYYYMMDD>.<run>`), not stable releases or raw `main`. Never base a build on a commit older than the migrations Tariq's live data has.

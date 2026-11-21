@@ -10,6 +10,7 @@ export type ModelEsque = {
   isDefault?: boolean | undefined;
   badge?: "new" | undefined;
   isLegacy?: boolean | undefined;
+  isFree?: boolean | undefined;
   isUnavailable?: boolean | undefined;
 };
 

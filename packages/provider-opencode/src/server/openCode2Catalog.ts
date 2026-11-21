@@ -2,7 +2,7 @@ import type { OpenCodeClient } from "@opencode/client/effect";
 import * as Effect from "effect/Effect";
 
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
-import { openCodePrice, type OpenCode2Model } from "./status.ts";
+import { isFreeOpenCodeCost, openCodePrice, type OpenCode2Model } from "./status.ts";
 
 // Cold catalogs take seconds; model reads already retry empty catalogs.
 const PROVIDER_NAME_TIMEOUT = "3 seconds";
@@ -44,6 +44,7 @@ const readCatalog = <E>(
           released: model.time.released,
           deprecated: model.status === "deprecated",
           ...(baseCost ? { price: openCodePrice(baseCost) } : {}),
+          free: isFreeOpenCodeCost(baseCost),
         };
       });
     }),

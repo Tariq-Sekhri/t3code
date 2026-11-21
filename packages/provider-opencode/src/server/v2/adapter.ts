@@ -15,6 +15,7 @@ import {
   Skill,
   type OpenCodeEvent,
 } from "@opencode/client/effect";
+import { isFreeOpenCodeCost } from "../status.ts";
 import * as Shell from "@opencode/schema/shell";
 import { Mcp } from "@opencode/schema/mcp";
 import {
@@ -875,6 +876,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     const directoryOf = (cwd: string | null | undefined) => cwd ?? host.paths.cwd;
     const windowOf = (cwd: string | null | undefined, model: string) =>
       contextWindows.get(directoryOf(cwd))?.get(model);
+    // Slugs seen free, or named free; a paid price later must not bill a turn the user chose as free.
+    const claimedFree = new Set<string>();
     const listedModelRef = (selection: ModelSelection, cwd: string | null | undefined) =>
       modelRef(selection, modelVariants.get(directoryOf(cwd))?.get(selection.model));
     const now = yield* DateTime.now;
@@ -4048,12 +4051,37 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                 const slug = `${model.providerID}/${model.id}`;
                 windows.set(slug, model.limit.input ?? model.limit.context);
                 variants.set(slug, new Set(model.variants.map((variant) => variant.id)));
+                if (
+                  isFreeOpenCodeCost(model.cost.find((cost) => cost.tier === undefined)) ||
+                  model.id.endsWith("-free")
+                ) {
+                  claimedFree.add(slug);
+                }
               }
             }),
           ),
           Effect.ignore({ log: true }),
         );
       });
+    // Reads the live catalog, not the cached one, and fails closed when it cannot confirm.
+    const notFreeReason = Effect.fnUntraced(function* (
+      slug: string,
+      cwd: string | null | undefined,
+    ) {
+      if (!claimedFree.has(slug)) return undefined;
+      const listed = yield* client.model
+        .list({ location: { directory: directoryOf(cwd) } })
+        .pipe(Effect.timeout("5 seconds"), Effect.option);
+      const model = Option.isSome(listed)
+        ? listed.value.data.find((entry) => `${entry.providerID}/${entry.id}` === slug)
+        : undefined;
+      if (model === undefined) {
+        return `Could not confirm that OpenCode model '${slug}' is still free, so the message was not sent.`;
+      }
+      return isFreeOpenCodeCost(model.cost.find((cost) => cost.tier === undefined))
+        ? undefined
+        : `OpenCode model '${slug}' is no longer free, so the message was not sent.`;
+    });
     const readModelsOnce = (cwd: string | null | undefined) =>
       contextWindows.has(directoryOf(cwd)) ? Effect.void : readModels(directoryOf(cwd));
     yield* readModels(session.cwd);
@@ -4978,6 +5006,17 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                     message: malformedModel(turnInput.modelSelection.model),
                     class: "validation_error",
                   }),
+                });
+              }
+              const notFree = yield* notFreeReason(
+                turnInput.modelSelection.model,
+                turnInput.runtimePolicy.cwd,
+              );
+              if (notFree !== undefined) {
+                yield* begin;
+                return yield* finishTurn(state, {
+                  status: "failed",
+                  failure: makeProviderFailure({ message: notFree, class: "validation_error" }),
                 });
               }
               // Switch to the plan agent before writing rules to retain its own path allows.

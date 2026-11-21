@@ -309,7 +309,17 @@ interface OpenCodeRelease {
   readonly deprecated?: boolean | undefined;
   /** Base input and output price, which a model size keeps when it is renamed. */
   readonly price?: string | undefined;
+  readonly free?: boolean | undefined;
 }
+
+/** Free means a zero base price for both input and output; an unknown price is never free. */
+export const isFreeOpenCodeCost = (
+  cost: { readonly input: number; readonly output: number } | undefined,
+) => cost !== undefined && cost.input === 0 && cost.output === 0;
+
+/** Free models first; the sort is stable so each group keeps its order. */
+const freeFirst = <T extends { readonly isFree?: boolean | undefined }>(models: ReadonlyArray<T>) =>
+  models.toSorted((left, right) => Number(right.isFree === true) - Number(left.isFree === true));
 
 export const openCodePrice = (cost: { readonly input: number; readonly output: number }) =>
   `${cost.input}/${cost.output}`;
@@ -365,7 +375,8 @@ function markOpenCodeLegacy(
           other.released > released &&
           (other.line === line || (price !== undefined && other.price === price)),
       );
-    return release.deprecated || superseded ? { ...model, isLegacy: true } : model;
+    const marked = release.free ? { ...model, isFree: true } : model;
+    return release.deprecated || superseded ? { ...marked, isLegacy: true } : marked;
   });
 }
 
@@ -407,12 +418,15 @@ function flattenOpenCodeModels(
           released: Number.isNaN(released) ? undefined : released,
           deprecated: model.status === "deprecated",
           price: model.cost ? openCodePrice(model.cost) : undefined,
+          free: isFreeOpenCodeCost(model.cost),
         },
       });
     }
   }
 
-  return markOpenCodeLegacy(entries).toSorted((left, right) => left.name.localeCompare(right.name));
+  return freeFirst(
+    markOpenCodeLegacy(entries).toSorted((left, right) => left.name.localeCompare(right.name)),
+  );
 }
 
 /** Undefined when OpenCode lists no models, so callers can keep the catalog they have. */
@@ -547,6 +561,7 @@ const catalogFingerprint = (models: ReadonlyArray<OpenCode2Model>) =>
         model.id,
         model.name,
         model.providerName,
+        model.free,
         model.variants.map((variant) => variant.id).toSorted(),
       ]),
     )
@@ -733,21 +748,23 @@ export function openCode2ProviderModels(
   catalog: ReadonlyArray<OpenCode2Model>,
 ): ReadonlyArray<ServerProviderModel> {
   return providerModelsFromSettings(
-    markOpenCodeLegacy(
-      catalog.map((model) => {
-        const subProvider = subProviderLabelFor(model);
-        return {
-          model: {
-            slug: `${model.providerID}/${model.id}`,
-            name: model.name,
-            ...(subProvider ? { subProvider } : {}),
-            isCustom: false,
-            capabilities: openCode2ModelCapabilities(model),
-          },
-          release: model,
-        };
-      }),
-    ).toSorted((left, right) => left.name.localeCompare(right.name)),
+    freeFirst(
+      markOpenCodeLegacy(
+        catalog.map((model) => {
+          const subProvider = subProviderLabelFor(model);
+          return {
+            model: {
+              slug: `${model.providerID}/${model.id}`,
+              name: model.name,
+              ...(subProvider ? { subProvider } : {}),
+              isCustom: false,
+              capabilities: openCode2ModelCapabilities(model),
+            },
+            release: model,
+          };
+        }),
+      ).toSorted((left, right) => left.name.localeCompare(right.name)),
+    ),
     settings.customModels,
     DEFAULT_OPENCODE_MODEL_CAPABILITIES,
   );

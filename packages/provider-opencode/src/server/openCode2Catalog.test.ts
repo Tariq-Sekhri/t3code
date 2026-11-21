@@ -8,7 +8,7 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { describe } from "vite-plus/test";
 
 import { loadOpenCode2Catalog } from "./openCode2Catalog.ts";
-import { makeOpenCode2ModelLoader } from "./status.ts";
+import { makeOpenCode2ModelLoader, openCode2ProviderModels } from "./status.ts";
 import * as OpenCode2Client from "./v2/OpenCode2Client.ts";
 
 const MODELS_BODY = `{"location":{"directory":"/project"},"data":[{"id":"step-5-preview-free","modelID":"step-5-preview-free","providerID":"opencode-go","name":"Step 5 Preview Free","compatibility":{"reasoningField":"reasoning_content"},"package":"@opencode/ai/providers/openai-compatible","settings":{"apiKey":"sk-demo-not-real","baseURL":"http://127.0.0.1:48990/v1","provider":"opencode-go"},"capabilities":{"tools":true,"input":["text","image","video"],"output":["text"]},"variants":[{"id":"low","settings":{"reasoningEffort":"low"}},{"id":"medium","settings":{"reasoningEffort":"medium"}},{"id":"high","settings":{"reasoningEffort":"high"}}],"time":{"released":1789516800000},"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}}],"status":"active","enabled":true,"limit":{"context":1000000,"input":1000000,"output":65536}},{"id":"step-5-preview-free","modelID":"step-5-preview-free","providerID":"opencode","name":"Step 5 Preview Free","compatibility":{"reasoningField":"reasoning_content"},"package":"@opencode/ai/providers/openai-compatible","settings":{"apiKey":"public","baseURL":"https://opencode.ai/zen/v1","provider":"opencode"},"capabilities":{"tools":true,"input":["text","image","video"],"output":["text"]},"variants":[{"id":"low","settings":{"reasoningEffort":"low"}},{"id":"medium","settings":{"reasoningEffort":"medium"}},{"id":"high","settings":{"reasoningEffort":"high"}}],"time":{"released":1789516800000},"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}}],"status":"active","enabled":true,"limit":{"context":1000000,"input":1000000,"output":65536}}]}`;
@@ -76,6 +76,28 @@ describe("loadOpenCode2Catalog", () => {
         [
           ["opencode-go/step-5-preview-free", "OpenCode Go"],
           ["opencode/step-5-preview-free", "OpenCode Zen"],
+        ],
+      );
+    }),
+  );
+
+  it.effect("marks a zero-priced model free and lists free models first", () =>
+    Effect.gen(function* () {
+      const models = yield* readCatalog({
+        "/api/model": MODELS_BODY,
+        "/api/provider": PROVIDERS_BODY,
+      });
+      assert.deepStrictEqual(
+        models.map((model) => model.free),
+        [true, true],
+      );
+      const paid = { ...models[0]!, id: "paid", name: "A Paid", free: false };
+      const listed = openCode2ProviderModels({ customModels: [] }, [paid, models[1]!]);
+      assert.deepStrictEqual(
+        listed.map((model) => [model.slug, model.isFree]),
+        [
+          ["opencode/step-5-preview-free", true],
+          ["opencode-go/paid", undefined],
         ],
       );
     }),

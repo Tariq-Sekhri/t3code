@@ -85,6 +85,8 @@ export const ServerProviderModel = Schema.Struct({
   isCustom: Schema.Boolean,
   isDefault: Schema.optional(Schema.Boolean),
   isLegacy: Schema.optional(Schema.Boolean),
+  // The provider lists this model at no cost.
+  isFree: Schema.optional(Schema.Boolean),
   // False when the provider can run this model in sessions but not for
   // application text generation. Absent means supported.
   supportsTextGeneration: Schema.optional(Schema.Boolean),

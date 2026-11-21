@@ -30,6 +30,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   /** Marks this instance apart from another of the same provider. */
   showInstanceBadge: boolean;
   showNewBadge?: boolean;
+  showFreeBadge?: boolean;
   unavailable?: boolean;
   jumpLabel?: string | null;
   disabledReason?: string | null;
@@ -94,6 +95,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
           >
             {gt("New", { $context: "badge on a newly added model" })}
           </span>
+        ) : null}
+        {props.showFreeBadge ? (
+          <Badge variant="outline" size="sm">
+            {gt("Free", { $context: "badge on a model that costs nothing to use" })}
+          </Badge>
         ) : null}
         {props.unavailable ? (
           <Badge variant="outline" size="sm">
