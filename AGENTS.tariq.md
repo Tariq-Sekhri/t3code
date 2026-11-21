@@ -31,6 +31,8 @@ Every upstream merge must keep these working. If upstream changes make one impos
 6. **Notifications expire normally**: completion alerts must not require interaction or linger over games. Returning to the app clears desktop notifications; opening a thread also clears its alerts.
 7. **Agents see message send times**: every message sent to an agent (new turn or steer) starts with `[Sent YYYY-MM-DD Day HH:MM GMT±N]` in local time, so "since we last talked" questions work. Slash commands are left verbatim. Off by default via `T3CODE_MESSAGE_TIMESTAMPS` so upstream tests keep exact text; the desktop backend env turns it on.
    - Code: `apps/server/src/orchestration-v2/MessageSentAt.ts` (tested beside it), used in `ProviderTurnStartService.ts` and `ProviderTurnControlService.ts`; flag set in `apps/desktop/src/backend/DesktopBackendConfiguration.ts`.
+8. **Sidebar footer omits Pull requests and Issues**: the bottom-left utility bar only shows Settings and Usage (not the PR or Issues buttons).
+   - Code: `SidebarUtilityMenu` in `apps/web/src/components/sidebar/SidebarChrome.tsx` (and `usePullRequestsSupported` removed from `apps/web/src/state/environments.ts` for knip; restore it if upstream adds another caller). Routes/pages and i18n catalogs stay intact so upstream merges stay clean.
 
 ## Upstream maintenance
 
